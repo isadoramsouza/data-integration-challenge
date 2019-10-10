@@ -26,6 +26,11 @@ var body struct {
 	Path string `json:"path"`
 }
 
+var match struct {
+	Name string `json:"Name"`
+	Zip  string `json:"Zip"`
+}
+
 var companies []Company
 var db *sql.DB
 var err error
@@ -44,7 +49,7 @@ func main() {
 	router := mux.NewRouter()
 	router.HandleFunc("/loadData/", LoadDataDB).Methods("POST")
 	router.HandleFunc("/mergeData/", MergeDataDB).Methods("POST")
-	//router.HandleFunc("/matchData/", MatchDataDB).Methods("POST")
+	router.HandleFunc("/matchData/", MatchDataDB).Methods("POST")
 	router.HandleFunc("/company/", GetCompanies).Methods("GET")
 	router.HandleFunc("/company/{id}", GetCompany).Methods("GET")
 	log.Fatal(http.ListenAndServe(":8000", router))
@@ -238,4 +243,46 @@ func GetCompanies(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	json.NewEncoder(w).Encode(companies)
+}
+
+func MatchDataDB(w http.ResponseWriter, r *http.Request) {
+	var numberColumns int
+
+	row := db.QueryRow("select count(*) from information_schema.columns where table_name='company';")
+
+	row.Scan(&numberColumns)
+
+	_ = json.NewDecoder(r.Body).Decode(&match)
+	name := string(match.Name)
+	zip := string(match.Zip)
+
+	rows, err := db.Query(`SELECT * FROM company where name like ($1) and zip like ($2)`, "%"+name+"%", "%"+zip+"%")
+	if err != nil {
+		log.Fatal(err)
+	}
+	var u Company
+	defer rows.Close()
+	for rows.Next() {
+
+		if numberColumns == 3 {
+			err := rows.Scan(&u.Id, &u.Name, &u.Zip)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+		if numberColumns == 4 {
+			err := rows.Scan(&u.Id, &u.Name, &u.Zip, &u.Website)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+	err = rows.Err()
+	if err != nil {
+		log.Fatal(err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	json.NewEncoder(w).Encode(u)
+
 }
